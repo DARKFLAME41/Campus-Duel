@@ -1,44 +1,5 @@
-export const problems = [
-  {
-    id: 1,
-    title: "Two Sum",
-    difficulty: "Medium",
-    category: "Arrays",
-    tags: ["Array", "Hashing"],
-    time: "10 min",
-    description:
-      "Given an array of integers and a target, return the indices of the two numbers whose sum equals the target.",
-    input: "nums = [2, 7, 11, 15], target = 9",
-    output: "[0, 1]",
-    constraints: "2 ≤ nums.length ≤ 10⁴; -10⁹ ≤ nums[i] ≤ 10⁹",
-  },
-  {
-    id: 2,
-    title: "Valid Parentheses",
-    difficulty: "Easy",
-    category: "Stacks",
-    tags: ["Stack", "Strings"],
-    time: "8 min",
-    description:
-      "Determine whether an input string containing brackets is valid and correctly nested.",
-    input: 's = "({[]})"',
-    output: "true",
-    constraints: "1 ≤ s.length ≤ 10⁴",
-  },
-  {
-    id: 3,
-    title: "Longest Increasing Path",
-    difficulty: "Hard",
-    category: "Dynamic Programming",
-    tags: ["DP", "Graphs", "Memoization"],
-    time: "15 min",
-    description:
-      "Find the length of the longest strictly increasing path in a matrix.",
-    input: "matrix = [[9,9,4],[6,6,8],[2,1,1]]",
-    output: "4",
-    constraints: "1 ≤ rows, cols ≤ 200",
-  },
-];
+// Questions are dynamically fetched online via onlineQuestionService.js (Non-repeating)
+export const problems = [];
 
 export const categories = [
   "Arrays", "Strings", "Linked Lists", "Stacks", "Queues", "Trees",

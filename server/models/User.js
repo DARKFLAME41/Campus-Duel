@@ -13,7 +13,8 @@ const userSchema = new mongoose.Schema({
   wins: { type: Number, default: 0 },
   losses: { type: Number, default: 0 },
   draws: { type: Number, default: 0 },
-  role: { type: String, enum: ['student', 'admin'], default: 'student' }
+  role: { type: String, enum: ['student', 'faculty', 'setter', 'moderator', 'admin'], default: 'student' },
+  roleDetails: { type: String, default: '', trim: true }
 }, { timestamps: true });
 
 userSchema.methods.toSafeJSON = function () {
@@ -21,7 +22,8 @@ userSchema.methods.toSafeJSON = function () {
     id: this._id.toString(), name: this.name, email: this.email,
     college: this.college, department: this.department, year: this.year,
     elo: this.elo, solved: this.solved, streak: this.streak,
-    wins: this.wins, losses: this.losses, draws: this.draws, role: this.role
+    wins: this.wins, losses: this.losses, draws: this.draws,
+    role: this.role, roleDetails: this.roleDetails
   };
 };
 module.exports = mongoose.model('User', userSchema);

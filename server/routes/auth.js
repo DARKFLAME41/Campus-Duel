@@ -7,13 +7,24 @@ function tokenFor(user) { return jwt.sign({ id: user._id.toString() }, process.e
 
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password, college, department, year } = req.body || {};
+    const { name, email, password, college, department, year, role, roleDetails } = req.body || {};
     if (!name || !email || !password) return res.status(400).json({ message: 'Name, email and password are required.' });
     if (password.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters.' });
     const normalized = email.trim().toLowerCase();
     if (await User.findOne({ email: normalized })) return res.status(409).json({ message: 'An account with this email already exists.' });
+    const validRoles = ['student', 'faculty', 'setter', 'moderator', 'admin'];
+    const assignedRole = validRoles.includes(role) ? role : 'student';
     const hashed = await bcrypt.hash(password, 12);
-    const user = await User.create({ name, email: normalized, password: hashed, college, department, year });
+    const user = await User.create({
+      name,
+      email: normalized,
+      password: hashed,
+      college: college || 'Not set',
+      department: department || 'Not set',
+      year: year || '2028',
+      role: assignedRole,
+      roleDetails: roleDetails || ''
+    });
     return res.status(201).json({ message: 'Registration successful', token: tokenFor(user), user: user.toSafeJSON() });
   } catch (err) {
     console.error('REGISTER ERROR:', err);

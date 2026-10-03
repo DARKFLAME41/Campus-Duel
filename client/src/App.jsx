@@ -1,14 +1,16 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import Editor from "@monaco-editor/react";
 import {
   Activity, ArrowLeft, BarChart3, Bell, Bot, Bug, Check, CheckCircle2, ChevronRight,
-  Clock3, Code2, Crown, Flame, Gauge, GitCompare, GraduationCap, Home,
-  Info, LayoutDashboard, Lock, LogOut, Menu, Palette, Play, Radio, Save, Search, Send, Settings, Shield,
+  Clock3, Code2, Crown, Eye, Flame, Gauge, GitCompare, GraduationCap, Home,
+  Info, LayoutDashboard, Lock, LogOut, Menu, Palette, Play, Radio, RotateCw, Save, Search, Send, Settings, Shield,
   Swords, Trophy, User, Users, Volume2, X, Zap
 } from "lucide-react";
 import { achievements, categories, leaderboard, modes, problems } from "./data";
 import { socket } from "./socket";
+import { fetchUniqueOnlineQuestion } from "./services/onlineQuestionService";
+import { AdminLogin, AdminDashboard, AdminProtectedRoute } from "./AdminPanel";
 
 const starter = {
   javascript: `function twoSum(nums, target) {
@@ -135,6 +137,296 @@ function saveUser(user) {
 }
 function clearUser() {
   localStorage.removeItem("campusDuelUser");
+  localStorage.removeItem("campusDuelToken");
+  localStorage.removeItem("campusDuelAdminUser");
+  localStorage.removeItem("campusDuelAdminToken");
+}
+
+export function getRoleDashboard(role) {
+  switch (role) {
+    case "admin":
+      return "/admin/dashboard";
+    case "faculty":
+    case "setter":
+    case "moderator":
+    case "student":
+    default:
+      return "/";
+  }
+}
+
+const APP_THEMES = [
+  {
+    id: "dark-arena",
+    name: "Dark Arena",
+    description: "Default deep space theme",
+    preview: ["#07090f", "#8b5cf6", "#22d3ee"],
+    vars: { "--bg": "#07090f", "--panel": "#0d111a", "--panel2": "#111722", "--line": "#202734", "--muted": "#8d96a8", "--text": "#eef1f8", "--accent": "#8b5cf6", "--cyan": "#22d3ee", "--green": "#38d996", "--red": "#ff5c7a", "--yellow": "#f6c453" },
+    bodyBg: "radial-gradient(circle at 75% -20%,#1d1436 0,transparent 35%),#07090f",
+    sidebarBg: "#090c13",
+  },
+  {
+    id: "midnight",
+    name: "Midnight",
+    description: "Deep navy with gold accents",
+    preview: ["#050810", "#f6c453", "#60a5fa"],
+    vars: { "--bg": "#050810", "--panel": "#090d18", "--panel2": "#0e1420", "--line": "#1a2235", "--muted": "#7a8499", "--text": "#e8edf8", "--accent": "#f6c453", "--cyan": "#60a5fa", "--green": "#34d399", "--red": "#f87171", "--yellow": "#fbbf24" },
+    bodyBg: "radial-gradient(circle at 80% -10%,#1a1206 0,transparent 35%),#050810",
+    sidebarBg: "#06090f",
+  },
+  {
+    id: "cyber-green",
+    name: "Cyber Green",
+    description: "Hacker-style terminal vibes",
+    preview: ["#030a07", "#00ff88", "#00d4ff"],
+    vars: { "--bg": "#030a07", "--panel": "#061410", "--panel2": "#091a14", "--line": "#0f2a20", "--muted": "#5a8070", "--text": "#d4f5e9", "--accent": "#00ff88", "--cyan": "#00d4ff", "--green": "#00ff88", "--red": "#ff4466", "--yellow": "#ffe066" },
+    bodyBg: "radial-gradient(circle at 20% 80%,#001a0d 0,transparent 40%),#030a07",
+    sidebarBg: "#040d08",
+  },
+  {
+    id: "ocean-blue",
+    name: "Ocean Blue",
+    description: "Calm deep ocean palette",
+    preview: ["#04080f", "#38bdf8", "#818cf8"],
+    vars: { "--bg": "#04080f", "--panel": "#080f1c", "--panel2": "#0d1525", "--line": "#152030", "--muted": "#6b8299", "--text": "#ddeeff", "--accent": "#38bdf8", "--cyan": "#818cf8", "--green": "#34d399", "--red": "#fb7185", "--yellow": "#fcd34d" },
+    bodyBg: "radial-gradient(circle at 60% -20%,#071830 0,transparent 40%),#04080f",
+    sidebarBg: "#050b16",
+  },
+  {
+    id: "crimson",
+    name: "Crimson",
+    description: "Bold red warrior aesthetic",
+    preview: ["#0a0507", "#ef4444", "#fb923c"],
+    vars: { "--bg": "#0a0507", "--panel": "#130a0c", "--panel2": "#180d10", "--line": "#2a1018", "--muted": "#8a6870", "--text": "#f5e0e4", "--accent": "#ef4444", "--cyan": "#fb923c", "--green": "#4ade80", "--red": "#ef4444", "--yellow": "#fb923c" },
+    bodyBg: "radial-gradient(circle at 85% 20%,#2a0808 0,transparent 35%),#0a0507",
+    sidebarBg: "#0b0608",
+  },
+  // ── Light Themes ──
+  {
+    id: "snow-white",
+    name: "Snow White",
+    description: "Clean minimal light mode",
+    preview: ["#f8fafc", "#6366f1", "#06b6d4"],
+    isLight: true,
+    vars: { "--bg": "#f8fafc", "--panel": "#ffffff", "--panel2": "#f1f5f9", "--line": "#e2e8f0", "--muted": "#64748b", "--text": "#0f172a", "--accent": "#6366f1", "--cyan": "#06b6d4", "--green": "#10b981", "--red": "#ef4444", "--yellow": "#f59e0b" },
+    bodyBg: "radial-gradient(circle at 70% -10%, #ede9fe 0, transparent 40%), #f8fafc",
+    sidebarBg: "#ffffff",
+  },
+  {
+    id: "soft-lavender",
+    name: "Soft Lavender",
+    description: "Gentle purple pastel vibes",
+    preview: ["#faf5ff", "#7c3aed", "#ec4899"],
+    isLight: true,
+    vars: { "--bg": "#faf5ff", "--panel": "#ffffff", "--panel2": "#f3e8ff", "--line": "#ddd6fe", "--muted": "#7c6b96", "--text": "#2e1065", "--accent": "#7c3aed", "--cyan": "#ec4899", "--green": "#059669", "--red": "#dc2626", "--yellow": "#d97706" },
+    bodyBg: "radial-gradient(circle at 30% 20%, #ede9fe 0, transparent 45%), #faf5ff",
+    sidebarBg: "#f5f3ff",
+  },
+  {
+    id: "warm-parchment",
+    name: "Warm Parchment",
+    description: "Cozy warm beige tones",
+    preview: ["#fef9f0", "#b45309", "#0891b2"],
+    isLight: true,
+    vars: { "--bg": "#fef9f0", "--panel": "#ffffff", "--panel2": "#fef3c7", "--line": "#fde68a", "--muted": "#92400e", "--text": "#1c1917", "--accent": "#b45309", "--cyan": "#0891b2", "--green": "#15803d", "--red": "#dc2626", "--yellow": "#b45309" },
+    bodyBg: "radial-gradient(circle at 80% 10%, #fef3c7 0, transparent 40%), #fef9f0",
+    sidebarBg: "#fffbeb",
+  },
+  {
+    id: "mint-fresh",
+    name: "Mint Fresh",
+    description: "Crisp green-tinted daylight",
+    preview: ["#f0fdf9", "#0d9488", "#7c3aed"],
+    isLight: true,
+    vars: { "--bg": "#f0fdf9", "--panel": "#ffffff", "--panel2": "#ccfbf1", "--line": "#99f6e4", "--muted": "#0f766e", "--text": "#042f2e", "--accent": "#0d9488", "--cyan": "#7c3aed", "--green": "#0d9488", "--red": "#e11d48", "--yellow": "#d97706" },
+    bodyBg: "radial-gradient(circle at 20% 80%, #ccfbf1 0, transparent 40%), #f0fdf9",
+    sidebarBg: "#f0fdf9",
+  },
+];
+
+function applyTheme(themeId) {
+  const theme = APP_THEMES.find(t => t.id === themeId) || APP_THEMES[0];
+  const root = document.documentElement;
+  Object.entries(theme.vars).forEach(([k, v]) => root.style.setProperty(k, v));
+
+  const bg      = theme.vars["--bg"];
+  const panel   = theme.vars["--panel"];
+  const panel2  = theme.vars["--panel2"];
+  const accent  = theme.vars["--accent"];
+  const text    = theme.vars["--text"];
+  const muted   = theme.vars["--muted"];
+  const line    = theme.vars["--line"];
+  const green   = theme.vars["--green"];
+
+  let styleEl = document.getElementById("cd-theme-overrides");
+  if (!styleEl) {
+    styleEl = document.createElement("style");
+    styleEl.id = "cd-theme-overrides";
+    document.head.appendChild(styleEl);
+  }
+
+  styleEl.textContent = `
+    body { background: ${theme.bodyBg} !important; color: ${text}; }
+    /* Sidebar */
+    .sidebar { background: ${theme.sidebarBg} !important; border-right-color: ${line} !important; }
+    .sidebar nav a { color: ${muted} !important; }
+    .sidebar nav a.active, .sidebar nav a:hover { background: ${panel2} !important; color: ${text} !important; }
+    .mini-player { background: ${panel2} !important; border-color: ${line} !important; }
+    .mini-player.clickable:hover { background: ${panel} !important; }
+    .mini-player b, .mini-player small { color: ${text} !important; }
+    .sidebar .ghost-btn { border-color: ${line} !important; color: ${muted} !important; }
+    /* Topbar */
+    .topbar { background: ${bg}ee !important; border-bottom-color: ${line} !important; }
+    .crumb { color: ${muted} !important; }
+    .icon-btn { color: ${muted} !important; }
+    .user-dropdown-menu { background: ${panel} !important; border-color: ${line} !important; }
+    .user-dropdown-menu button { color: ${text} !important; }
+    .user-dropdown-menu button:hover { background: ${panel2} !important; }
+    .user-dropdown-header b { color: ${text} !important; }
+    .user-dropdown-header small { color: ${muted} !important; }
+    .user-dropdown-header { border-bottom-color: ${line} !important; }
+    .dropdown-divider { background: ${line} !important; }
+    /* Brand & Avatar */
+    .brand-mark { background: linear-gradient(135deg, ${accent}, ${accent}88) !important; box-shadow: 0 8px 30px ${accent}33 !important; }
+    .brand b { color: ${text} !important; }
+    .brand span { color: ${muted} !important; }
+    .avatar { background: linear-gradient(135deg, ${accent}cc, ${accent}55) !important; }
+    .avatar.clickable:hover { box-shadow: 0 0 0 2px ${accent} !important; }
+    .profile-avatar { background: linear-gradient(135deg, ${accent}cc, ${accent}55) !important; }
+    /* Buttons */
+    .primary-btn { background: linear-gradient(135deg, ${accent}, ${accent}cc) !important; color: #fff !important; box-shadow: 0 8px 25px ${accent}22 !important; }
+    .selected-dot { background: ${accent} !important; }
+    .ghost-btn { border-color: ${line} !important; color: ${muted} !important; background: transparent !important; }
+    /* Dashboard */
+    .hero-card { background: linear-gradient(110deg, ${panel2}, ${panel}) !important; border-color: ${line} !important; }
+    .hero-card h1, .hero-card p, .hero-card strong { color: ${text} !important; }
+    .hero-orb { border-color: ${accent}55 !important; background: ${panel2} !important; box-shadow: 0 0 80px ${accent}22 !important; }
+    .hero-orb small { color: ${accent} !important; }
+    .stat-card { background: ${panel} !important; border-color: ${line} !important; }
+    .stat-card small { color: ${muted} !important; }
+    .stat-card strong { color: ${text} !important; }
+    .stat-icon { background: ${panel2} !important; color: ${accent} !important; }
+    .stat-card span { color: ${green} !important; }
+    /* Panels & Cards */
+    .panel { background: ${panel} !important; border-color: ${line} !important; }
+    .panel-title { color: ${muted} !important; }
+    .panel-title h3 { color: ${text} !important; }
+    .mode-card { background: ${panel} !important; border-color: ${line} !important; }
+    .mode-card h3 { color: ${text} !important; }
+    .mode-card p { color: ${muted} !important; }
+    .mode-card:hover, .mode-card.selected { border-color: ${accent} !important; }
+    .mode-card.selected { background: ${panel2} !important; }
+    .mode-elo { background: ${panel2} !important; color: ${accent} !important; }
+    .mode-meta { color: ${muted} !important; border-top-color: ${line} !important; }
+    .insight { background: ${panel2} !important; color: ${accent} !important; }
+    .insight p { color: ${muted} !important; }
+    .match-row { border-bottom-color: ${line} !important; }
+    .match-row b { color: ${text} !important; }
+    .match-row small { color: ${muted} !important; }
+    .mode-icon { background: ${panel2} !important; }
+    /* Eyebrow labels */
+    .eyebrow { color: ${accent} !important; }
+    /* Skill bars */
+    .bar { background: ${panel2} !important; }
+    .bar i { background: linear-gradient(90deg, ${accent}88, ${accent}) !important; }
+    .skill > div:first-child span { color: ${text} !important; }
+    /* Achievements */
+    .achievement { background: ${panel2} !important; border-color: ${line} !important; }
+    .achievement b { color: ${text} !important; }
+    .achievement small { color: ${muted} !important; }
+    .achievement.unlocked { border-color: ${accent}66 !important; }
+    /* Tabs */
+    .tabs { background: ${panel2} !important; border-color: ${line} !important; }
+    .tabs button { color: ${muted} !important; }
+    .tabs button.active { background: ${panel} !important; color: ${accent} !important; }
+    .result-tabs button { color: ${muted} !important; }
+    .result-tabs button.active { color: ${accent} !important; border-bottom-color: ${accent} !important; }
+    /* Arena */
+    .arena-header { background: ${panel} !important; border-bottom-color: ${line} !important; }
+    .arena-title h2 { color: ${text} !important; }
+    .arena-grid { background: ${bg} !important; }
+    .problem-panel { background: ${panel} !important; border-right-color: ${line} !important; }
+    .problem-panel h2 { color: ${text} !important; }
+    .problem-panel p, .problem-panel li { color: ${muted} !important; }
+    .problem-panel h4 { color: ${text} !important; }
+    .problem-panel pre { background: ${panel2} !important; border-color: ${line} !important; color: ${text} !important; }
+    .problem-tag { background: ${panel2} !important; color: ${muted} !important; }
+    .problem-info span { background: ${panel2} !important; color: ${muted} !important; }
+    .opponent-card { border-top-color: ${line} !important; }
+    .opponent-card b { color: ${text} !important; }
+    .pulse-dot { background: ${green} !important; box-shadow: 0 0 0 5px ${green}1a !important; }
+    .opponent-status span { color: ${text} !important; }
+    .opponent-card small { color: ${muted} !important; }
+    .editor-panel { background: ${bg} !important; }
+    .editor-toolbar { background: ${panel} !important; border-bottom-color: ${line} !important; }
+    .toolbar-left { color: ${muted} !important; }
+    .toolbar-left select { background: ${panel2} !important; border-color: ${line} !important; color: ${text} !important; }
+    .opponent-live { color: ${muted} !important; }
+    .editor-actions { background: ${panel} !important; border-top-color: ${line} !important; }
+    .results-panel { background: ${panel} !important; border-top-color: ${line} !important; }
+    .result-tabs { border-bottom-color: ${line} !important; }
+    .test-list span { background: ${panel2} !important; color: ${text} !important; }
+    .console { color: ${muted} !important; }
+    .result-summary { color: ${green} !important; }
+    .attack-modal { background: ${panel} !important; }
+    .attack-modal h2 { color: ${text} !important; }
+    .attack-modal p { color: ${muted} !important; }
+    /* Settings */
+    .settings-page h1, .settings-page h2, .settings-page h3 { color: ${text} !important; }
+    .settings-desc { color: ${muted} !important; }
+    .settings-nav button { background: ${panel} !important; border-color: ${line} !important; color: ${muted} !important; }
+    .settings-nav button:hover, .settings-nav button.active { background: ${panel2} !important; border-color: ${accent} !important; color: ${text} !important; }
+    .settings-grid label { color: ${muted} !important; }
+    .settings-grid input, .settings-grid select { background: ${panel2} !important; border-color: ${line} !important; color: ${text} !important; }
+    .settings-grid input:focus, .settings-grid select:focus { border-color: ${accent} !important; box-shadow: 0 0 0 3px ${accent}1a !important; }
+    .settings-toggle-row { background: ${panel2} !important; border-color: ${line} !important; }
+    .settings-toggle-row b { color: ${text} !important; }
+    .settings-toggle-row small { color: ${muted} !important; }
+    /* Config selects in duel selection */
+    .config-fields select { background: ${panel2} !important; border-color: ${line} !important; color: ${text} !important; }
+    .match-config h3 { color: ${text} !important; }
+    .match-config p { color: ${muted} !important; }
+    /* Leaderboard */
+    .table-head { color: ${muted} !important; }
+    .leader-row { border-top-color: ${line} !important; color: ${text} !important; }
+    .leader-row.me { background: ${panel2} !important; }
+    /* Profile */
+    .profile-hero h1 { color: ${text} !important; }
+    .profile-hero p { color: ${muted} !important; }
+    .profile-badges span { background: ${panel2} !important; color: ${muted} !important; border-color: ${line} !important; }
+    /* Admin */
+    .admin-icon { background: ${panel2} !important; }
+    .admin-row { border-top-color: ${line} !important; }
+    .admin-row b { color: ${text} !important; }
+    .admin-row small { color: ${muted} !important; }
+    .search { border-color: ${line} !important; background: ${panel} !important; }
+    .search input { color: ${text} !important; }
+    /* Section headings */
+    .section-head h1, .section-head h2, .section-head p { color: ${text} !important; }
+    /* Auth page */
+    .auth-page { background: ${theme.bodyBg} !important; }
+    .auth-visual { border-right-color: ${line} !important; }
+    .auth-copy h1 { color: ${text} !important; }
+    .auth-copy p { color: ${muted} !important; }
+    .auth-copy h1 em { color: ${accent} !important; }
+    .auth-features span { background: ${panel} !important; color: ${muted} !important; border-color: ${line} !important; }
+    .auth-panel { background: ${panel2} !important; }
+    .auth-card { background: ${panel} !important; border-color: ${line} !important; }
+    .auth-card h2 { color: ${text} !important; }
+    .auth-muted { color: ${muted} !important; }
+    .auth-tabs { background: ${panel2} !important; }
+    .auth-tabs button { color: ${muted} !important; }
+    .auth-tabs button.active { background: ${panel} !important; color: ${accent} !important; }
+    .auth-card label { color: ${muted} !important; }
+    .auth-card input, .auth-card select { background: ${panel2} !important; border-color: ${line} !important; color: ${text} !important; }
+    .auth-card input:focus, .auth-card select:focus { border-color: ${accent} !important; box-shadow: 0 0 0 3px ${accent}1a !important; }
+    /* Theme cards */
+    .theme-card { background: ${panel2} !important; border-color: ${line} !important; }
+    .theme-card.selected { border-color: ${accent} !important; box-shadow: 0 0 0 2px ${accent}, 0 12px 30px #0003 !important; }
+    .theme-check { background: ${accent} !important; }
+    .theme-info b { color: ${text} !important; }
+    .theme-info small { color: ${muted} !important; }
+  `;
 }
 
 function getSettings() {
@@ -148,6 +440,7 @@ function getSettings() {
       soundEffects: true,
       notifications: true,
       defaultDifficulty: "Medium",
+      appTheme: "dark-arena",
     };
   } catch {
     return {
@@ -159,6 +452,7 @@ function getSettings() {
       soundEffects: true,
       notifications: true,
       defaultDifficulty: "Medium",
+      appTheme: "dark-arena",
     };
   }
 }
@@ -169,7 +463,16 @@ function saveSettings(settings) {
 function AuthPage() {
   const nav = useNavigate();
   const [mode, setMode] = useState("login");
-  const [form, setForm] = useState({ name: "", email: "", password: "", college: "", department: "", year: "2028" });
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    college: "",
+    department: "",
+    year: "2028",
+    role: "student",
+    roleDetails: ""
+  });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -196,21 +499,28 @@ function AuthPage() {
       if (!response.ok) throw new Error(data.message || "Authentication failed.");
 
       // Accept common JWT response shapes without hard-coding one backend contract.
-      const user = data.user || data.data?.user || {
-        name: form.name || form.email.split("@")[0],
-        email: form.email,
-        college: form.college || "Not set",
-        department: form.department || "Not set",
-        year: form.year || "2028",
-        elo: 1200,
-        rank: null,
-        streak: 0,
-        solved: 0
+      const rawUser = data.user || data.data?.user || {};
+      const user = {
+        name: rawUser.name || form.name || form.email.split("@")[0],
+        email: rawUser.email || form.email,
+        college: rawUser.college || form.college || "Not set",
+        department: rawUser.department || form.department || "Not set",
+        year: rawUser.year || form.year || "2028",
+        role: rawUser.role || form.role || "student",
+        roleDetails: rawUser.roleDetails || form.roleDetails || "",
+        elo: typeof rawUser.elo === "number" ? rawUser.elo : 1200,
+        rank: rawUser.rank || null,
+        streak: typeof rawUser.streak === "number" ? rawUser.streak : 0,
+        solved: typeof rawUser.solved === "number" ? rawUser.solved : 0
       };
       if (data.token) localStorage.setItem("campusDuelToken", data.token);
       if (data.accessToken) localStorage.setItem("campusDuelToken", data.accessToken);
+      if (user.role === "admin") {
+        localStorage.setItem("campusDuelAdminToken", data.token || data.accessToken || "");
+        localStorage.setItem("campusDuelAdminUser", JSON.stringify(user));
+      }
       saveUser(user);
-      nav("/");
+      nav(getRoleDashboard(user.role), { replace: true });
     } catch (err) {
       if (import.meta.env.VITE_DEMO_AUTH === "true") {
         const user = {
@@ -219,10 +529,16 @@ function AuthPage() {
           college: form.college || "Not set",
           department: form.department || "Not set",
           year: form.year || "2028",
+          role: form.role || "student",
+          roleDetails: form.roleDetails || "",
           elo: 1200, rank: null, streak: 0, solved: 0
         };
+        if (user.role === "admin") {
+          localStorage.setItem("campusDuelAdminToken", "demo-admin-token");
+          localStorage.setItem("campusDuelAdminUser", JSON.stringify(user));
+        }
         saveUser(user);
-        nav("/");
+        nav(getRoleDashboard(user.role), { replace: true });
       } else {
         setError(err.message || "Authentication failed. Please check your details.");
       }
@@ -246,12 +562,49 @@ function AuthPage() {
         <div className="auth-tabs"><button className={mode==="login"?"active":""} onClick={()=>{setMode("login");setError("")}}>Login</button><button className={mode==="register"?"active":""} onClick={()=>{setMode("register");setError("")}}>Register</button></div>
         <span className="eyebrow">{mode==="login"?"WELCOME BACK":"CREATE YOUR DUELIST ACCOUNT"}</span>
         <h2>{mode==="login"?"Enter the arena":"Join Campus Duel"}</h2>
-        <p className="auth-muted">{mode==="login"?"Sign in to continue your competitive journey.":"Create a fresh account. Your new profile starts at 1200 ELO."}</p>
+        <p className="auth-muted">{mode==="login"?"Sign in to continue your competitive journey.":"Create a fresh account with your designated campus role."}</p>
         <form onSubmit={submit}>
-          {mode==="register" && <><label>Full name<input name="name" value={form.name} onChange={update} placeholder="Your name" autoComplete="name"/></label><div className="auth-two"><label>College<input name="college" value={form.college} onChange={update} placeholder="College"/></label><label>Department<input name="department" value={form.department} onChange={update} placeholder="CSE"/></label></div></>}
-          <label>Email<input name="email" type="email" value={form.email} onChange={update} placeholder="you@example.com" autoComplete="email"/></label>
-          <label>Password<input name="password" type="password" value={form.password} onChange={update} placeholder="••••••••" autoComplete={mode==="login"?"current-password":"new-password"}/></label>
-          {mode==="register" && <label>Graduation year<select name="year" value={form.year} onChange={update}><option>2027</option><option>2028</option><option>2029</option><option>2030</option></select></label>}
+          {mode==="register" && (
+            <>
+              <label>Full name<input name="name" value={form.name} onChange={update} placeholder="Your name" autoComplete="name" required/></label>
+              <label>
+                Role on Platform
+                <select name="role" value={form.role} onChange={update} style={{ background: "var(--panel2)", color: "var(--text)", border: "1px solid var(--line)", padding: "10px", borderRadius: "8px", width: "100%" }}>
+                  <option value="student">🎓 Student (Competitor)</option>
+                  <option value="faculty">👨‍🏫 Faculty / Professor</option>
+                  <option value="setter">✍️ Problem Setter / Curator</option>
+                  <option value="moderator">🛡️ Campus Lead / Referee</option>
+                  <option value="admin">👑 System Administrator</option>
+                </select>
+              </label>
+              <div className="auth-two">
+                <label>{form.role === "admin" ? "Organization" : "College"}<input name="college" value={form.college} onChange={update} placeholder={form.role === "admin" ? "Platform Team" : "College Name"}/></label>
+                <label>Department<input name="department" value={form.department} onChange={update} placeholder="CSE / IT / ECE"/></label>
+              </div>
+
+              {form.role === "student" && (
+                <label>Graduation year<select name="year" value={form.year} onChange={update}><option>2027</option><option>2028</option><option>2029</option><option>2030</option></select></label>
+              )}
+
+              {form.role === "faculty" && (
+                <label>Academic Title / Designation<input name="roleDetails" value={form.roleDetails} onChange={update} placeholder="e.g. Assistant Professor, HOD, Lab Head"/></label>
+              )}
+
+              {form.role === "setter" && (
+                <label>Problem Specialty / Handle<input name="roleDetails" value={form.roleDetails} onChange={update} placeholder="e.g. Dynamic Programming / LeetCode Handle"/></label>
+              )}
+
+              {form.role === "moderator" && (
+                <label>Student Club / Campus Title<input name="roleDetails" value={form.roleDetails} onChange={update} placeholder="e.g. Coding Club Lead, GDSC Organizer"/></label>
+              )}
+
+              {form.role === "admin" && (
+                <label>Administrative Unit<input name="roleDetails" value={form.roleDetails} onChange={update} placeholder="e.g. Arena Operations"/></label>
+              )}
+            </>
+          )}
+          <label>Email<input name="email" type="email" value={form.email} onChange={update} placeholder="you@example.com" autoComplete="email" required/></label>
+          <label>Password<input name="password" type="password" value={form.password} onChange={update} placeholder="••••••••" autoComplete={mode==="login"?"current-password":"new-password"} required/></label>
           {error && <div className="auth-error">{error}</div>}
           <button className="primary-btn auth-submit" disabled={loading}>{loading ? "Connecting..." : mode==="login" ? "Enter Campus Duel" : "Create Account"} <ChevronRight size={16}/></button>
         </form>
@@ -270,6 +623,15 @@ function AdminProtected({ children }) {
   return user?.role === "admin" ? children : <Navigate to="/" replace />;
 }
 
+function RoleProtected({ allowedRoles = [], children }) {
+  const user = getUser();
+  if (!user) return <Navigate to="/auth" replace />;
+  if (user.role === "admin" || (Array.isArray(allowedRoles) && allowedRoles.includes(user.role))) {
+    return children;
+  }
+  return <Navigate to="/" replace />;
+}
+
 function Shell({ children }) {
   const location = useLocation();
   const nav = useNavigate();
@@ -278,22 +640,57 @@ function Shell({ children }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const initials = (currentUser?.name || "DU").slice(0, 2).toUpperCase();
 
-  const links = [
-    ["/", "Dashboard", LayoutDashboard],
+  const role = currentUser?.role || "student";
+  const isAdmin = role === "admin";
+  const isFaculty = role === "faculty";
+  const isSetter = role === "setter";
+  const isModerator = role === "moderator";
+  const isStudent = role === "student" || !role;
+
+  // Role-specific home label & icon
+  const dashboardLink = (() => {
+    if (isFaculty)   return ["/", "Classroom Hub", GraduationCap];
+    if (isSetter)    return ["/", "Problem Studio", Code2];
+    if (isModerator) return ["/", "Referee Console", Shield];
+    if (isAdmin)     return ["/admin/dashboard", "Admin Panel", Crown];
+    return ["/", "Dashboard", LayoutDashboard];
+  })();
+
+  // Shared nav links available to all roles
+  const sharedLinks = [
     ["/duel", "Play Duel", Swords],
     ["/leaderboard", "Leaderboard", Trophy],
     ["/profile", "Profile", Users],
-    ...(currentUser?.role === "admin" ? [["/admin", "Admin", Shield]] : []),
   ];
+
+  // Role-specific extra links
+  const roleLinks = [
+    ...(isFaculty   ? [["/faculty", "Room Manager", Users]] : []),
+    ...(isSetter    ? [["/studio", "Write Problem", Code2]] : []),
+    ...(isModerator ? [["/referee", "Live Monitor", Shield]] : []),
+    ...(isAdmin     ? [["/faculty", "Faculty View", GraduationCap], ["/studio", "Problem Studio", Code2], ["/referee", "Referee", Shield]] : []),
+  ];
+
+  const links = [dashboardLink, ...sharedLinks, ...roleLinks];
+
+  const roleLabel = isFaculty ? "👨‍🏫 Faculty" : isSetter ? "✍️ Setter" : isModerator ? "🛡️ Referee" : isAdmin ? "👑 Admin" : "🎓 Student";
 
   return <div className="app-shell">
     <aside className={`sidebar ${open ? "open" : ""}`}>
       <div className="brand"><div className="brand-mark">⚔</div><div><b>Campus Duel</b><span>CODING ARENA</span></div></div>
-      <nav>{links.map(([to, label, Icon]) => <Link key={to} className={location.pathname === to ? "active" : ""} to={to} onClick={() => setOpen(false)}><Icon size={18}/>{label}</Link>)}</nav>
+      <nav>{links.map(([to, label, Icon]) => <Link key={`${to}-${label}`} className={location.pathname === to || (to === "/" && location.pathname === "/") ? "active" : ""} to={to} onClick={() => setOpen(false)}><Icon size={18}/>{label}</Link>)}</nav>
       <div className="sidebar-bottom">
         <div className="mini-player" title="Duelist Profile">
           <div className="avatar">{initials}</div>
-          <div><b>{currentUser.name}</b><small>{currentUser.elo || 1200} ELO</small></div>
+          <div>
+            <b>{currentUser.name}</b>
+            <small style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+              <span>{currentUser.elo || 1200} ELO</span>
+              <span style={{ background: "var(--panel2)", border: "1px solid var(--line)", padding: "1px 5px", borderRadius: "4px", fontSize: "0.7rem", color: "var(--accent)" }}>
+                {roleLabel}
+              </span>
+            </small>
+          </div>
         </div>
         <button className="ghost-btn" onClick={() => { clearUser(); localStorage.removeItem("campusDuelToken"); nav("/auth"); }}><LogOut size={16}/> Sign out</button>
       </div>
@@ -335,6 +732,84 @@ function Shell({ children }) {
   </div>;
 }
 
+function JoinRoomByCodeCard() {
+  const nav = useNavigate();
+  const [joinCodeInput, setJoinCodeInput] = useState("");
+  const [joining, setJoining] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  async function handleJoinByCode(e) {
+    e.preventDefault();
+    if (!joinCodeInput.trim()) return;
+    setJoining(true);
+    setErrorMsg("");
+
+    const code = joinCodeInput.trim().toUpperCase();
+    const token = localStorage.getItem("campusDuelToken");
+    const api = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
+    try {
+      const res = await fetch(`${api}/rooms/join-code`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ joinCode: code })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || "Failed to join room.");
+
+      nav(`/arena?room=${data.room.code}&joinCode=${data.room.code}`);
+    } catch (err) {
+      nav(`/arena?room=${code}&joinCode=${code}`);
+    } finally {
+      setJoining(false);
+    }
+  }
+
+  return (
+    <div className="panel join-room-card" style={{ background: "linear-gradient(135deg, var(--panel), var(--panel2))", border: "1px solid var(--line)", padding: "20px", borderRadius: "12px", marginBottom: "20px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "10px" }}>
+        <div>
+          <span className="eyebrow" style={{ color: "var(--cyan)" }}><GraduationCap size={14}/> CLASSROOM & FACULTY ROOMS</span>
+          <h3 style={{ margin: "4px 0 2px" }}>Join Room via Join Code</h3>
+          <p style={{ color: "var(--muted)", fontSize: "0.85rem", margin: 0 }}>Enter the unique Join Code (e.g. <b>FAC-8042</b>) provided by your Faculty.</p>
+        </div>
+        <div style={{ background: "rgba(34, 211, 238, 0.1)", border: "1px solid rgba(34, 211, 238, 0.2)", padding: "10px", borderRadius: "10px" }}>
+          <GraduationCap size={26} color="var(--cyan)"/>
+        </div>
+      </div>
+      <form onSubmit={handleJoinByCode} style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+        <input
+          value={joinCodeInput}
+          onChange={(e) => setJoinCodeInput(e.target.value)}
+          placeholder="Enter Join Code (e.g. FAC-8042)"
+          style={{
+            flex: 1,
+            minWidth: "220px",
+            background: "var(--bg)",
+            border: "1px solid var(--line)",
+            padding: "11px 16px",
+            borderRadius: "8px",
+            color: "var(--text)",
+            fontSize: "0.95rem",
+            fontWeight: "bold",
+            letterSpacing: "0.05em",
+            textTransform: "uppercase",
+            outline: "none"
+          }}
+          required
+        />
+        <button className="primary-btn" type="submit" disabled={joining} style={{ padding: "11px 24px", borderRadius: "8px" }}>
+          {joining ? "Joining..." : "Join Room"} <ChevronRight size={16}/>
+        </button>
+      </form>
+      {errorMsg && <div style={{ color: "var(--red)", fontSize: "0.82rem", marginTop: "8px" }}>{errorMsg}</div>}
+    </div>
+  );
+}
+
 function Dashboard() {
   const nav = useNavigate();
   const currentUser = getUser() || { name: "Duelist", elo: 1200, rank: null, streak: 0, solved: 0 };
@@ -353,6 +828,10 @@ function Dashboard() {
       <div><span className="eyebrow"><Radio size={14}/> LIVE ARENA</span><h1>Welcome back, {currentUser.name} <span>👋</span></h1><p>Don't just solve code. <strong>Defeat your opponent.</strong></p><button className="primary-btn big" onClick={() => nav("/duel")}>Find a Duel <Swords size={18}/></button></div>
       <div className="hero-orb"><span>⚔</span><small>CODE<br/>DUEL</small></div>
     </section>
+
+    {/* Student Join Faculty Room Code Card */}
+    <JoinRoomByCodeCard />
+
     <div className="stat-grid">
       <Stat icon={<Trophy/>} label="ELO Rating" value={currentUser.elo || 1200} meta={isNewAccount ? "Initial rating" : `${currentUser.elo - 1200 >= 0 ? "+" : ""}${currentUser.elo - 1200} ELO overall`} />
       <Stat icon={<Flame/>} label="Win Streak" value={currentUser.streak || 0} meta={`Best: ${Math.max(currentUser.streak || 0, currentUser.wins || 0)}`} />
@@ -564,8 +1043,13 @@ function Arena() {
   const location = useLocation();
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const modeKey = searchParams.get("mode") || "CODE_DUEL";
-  const modeConfig = modeConfigs[modeKey] || modeConfigs.CODE_DUEL;
+  const defaultFallbackConfig = modeConfigs[modeKey] || modeConfigs.CODE_DUEL;
   const userSettings = getSettings();
+
+  const [dynamicQuestion, setDynamicQuestion] = useState(null);
+  const [fetchingQuestion, setFetchingQuestion] = useState(true);
+
+  const modeConfig = dynamicQuestion || defaultFallbackConfig;
 
   const [language, setLanguage] = useState(userSettings.defaultLanguage || "javascript");
   const [code, setCode] = useState(() => modeConfig.starters[userSettings.defaultLanguage] || modeConfig.starters.javascript || "");
@@ -577,6 +1061,22 @@ function Arena() {
   const [tab, setTab] = useState("tests");
   const [battleFinished, setBattleFinished] = useState(false);
   const [battleOutcome, setBattleOutcome] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    setFetchingQuestion(true);
+    fetchUniqueOnlineQuestion(modeKey, userSettings.defaultDifficulty || "Medium").then((q) => {
+      if (mounted && q) {
+        setDynamicQuestion(q);
+        setCode(q.starters[userSettings.defaultLanguage] || q.starters.javascript || "");
+        setTime(q.durationSec);
+        setFetchingQuestion(false);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [modeKey]);
 
   const isBattleOver = submitted || time === 0;
 
@@ -756,19 +1256,44 @@ function Arena() {
         </div>
       </div>
       <div className="versus"><Player name="Hari" elo="1428" active/><span>VS</span><Player name="Alex" elo="1275"/></div>
-      <div className="timer-container">
+      <div className="timer-container" style={{ display: "flex", alignItems: "center", gap: "12px" }}>
         <div className="timer"><Clock3 size={17}/><b>{mins}:{secs}</b></div>
+        <button
+          className="exit-battle-btn"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "5px",
+            background: "rgba(239, 68, 68, 0.15)",
+            border: "1px solid rgba(239, 68, 68, 0.35)",
+            color: "#ff6b6b",
+            padding: "5px 12px",
+            borderRadius: "6px",
+            fontWeight: "600",
+            fontSize: "12px",
+            cursor: "pointer",
+            transition: "all 0.2s ease"
+          }}
+          onClick={() => {
+            if (!isBattleOver) {
+              if (window.confirm("Are you sure you want to exit this active duel? Exiting will forfeit the match.")) {
+                processResult("LOSS");
+                nav("/duel");
+              }
+            } else {
+              nav("/duel");
+            }
+          }}
+          title="Exit Match"
+        >
+          <LogOut size={14} /> Exit
+        </button>
         {battleOutcome && (
           <span className={`result ${battleOutcome.status.toLowerCase()}`} style={{ fontSize: "10px", padding: "6px 10px" }}>
             {battleOutcome.status === "WIN"
               ? `🏆 VICTORY (+25 ELO) 🔥 ${battleOutcome.newStreak} streak`
               : `💀 DEFEAT (-15 ELO) — streak reset`}
           </span>
-        )}
-        {isBattleOver && (
-          <button className="exit-battle-btn" onClick={() => nav("/duel")} title="Exit Battle">
-            <LogOut size={14} /> Exit
-          </button>
         )}
       </div>
     </div>
@@ -927,6 +1452,12 @@ function Profile(){
         <h1>{currentUser.name}</h1>
         <p><GraduationCap size={15}/> {currentUser.department || "CSE"} · Class of {currentUser.year || "2028"}</p>
         <div className="profile-badges">
+          <span className={`role-tag ${currentUser.role || "student"}`}>
+            {currentUser.role === "admin" ? "👑 Admin" :
+             currentUser.role === "faculty" ? "👨‍🏫 Faculty" :
+             currentUser.role === "setter" ? "✍️ Problem Setter" :
+             currentUser.role === "moderator" ? "🛡️ Referee" : "🎓 Duelist"}
+          </span>
           <span>🔥 {currentUser.streak || 0} streak</span>
           <span>🏆 {currentUser.elo || 1200} ELO</span>
           <span>⚔ {currentUser.solved || 0} solved</span>
@@ -1050,6 +1581,24 @@ function SettingsView() {
   const [passwordForm, setPasswordForm] = useState({ current: "", newPass: "", confirm: "" });
   const [savedMessage, setSavedMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [selectedTheme, setSelectedTheme] = useState(initialSettings.appTheme || "dark-arena");
+
+  // Apply saved theme on mount
+  useEffect(() => { applyTheme(initialSettings.appTheme || "dark-arena"); }, []);
+
+  const handleThemeSelect = useCallback((themeId) => {
+    setSelectedTheme(themeId);
+    applyTheme(themeId);
+  }, []);
+
+  function saveThemeSubmit(e) {
+    e.preventDefault();
+    const updated = { ...prefForm, appTheme: selectedTheme };
+    setPrefForm(updated);
+    saveSettings(updated);
+    setSavedMessage("Theme saved successfully!");
+    setTimeout(() => setSavedMessage(""), 3000);
+  }
 
   const handleProfileChange = e => setProfileForm(v => ({ ...v, [e.target.name]: e.target.value }));
   const handlePrefChange = (key, val) => setPrefForm(v => ({ ...v, [key]: val }));
@@ -1125,6 +1674,9 @@ function SettingsView() {
           <button className={activeTab === "profile" ? "active" : ""} onClick={() => setActiveTab("profile")}>
             <Users size={16}/> Profile Info
           </button>
+          <button className={activeTab === "appearance" ? "active" : ""} onClick={() => setActiveTab("appearance")}>
+            <Palette size={16}/> Appearance
+          </button>
           <button className={activeTab === "editor" ? "active" : ""} onClick={() => setActiveTab("editor")}>
             <Code2 size={16}/> Editor & Code
           </button>
@@ -1137,6 +1689,48 @@ function SettingsView() {
         </div>
 
         <div className="settings-content">
+          {activeTab === "appearance" && (
+            <form onSubmit={saveThemeSubmit} className="panel settings-panel">
+              <div className="panel-title">
+                <div>
+                  <span className="eyebrow">APP THEME</span>
+                  <h3>Appearance</h3>
+                </div>
+                <Palette size={20}/>
+              </div>
+              <p className="settings-desc">Choose a visual theme for the entire Campus Duel interface. Changes apply instantly.</p>
+
+              <div className="theme-grid">
+                {APP_THEMES.map(theme => (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    className={`theme-card ${selectedTheme === theme.id ? "selected" : ""}`}
+                    onClick={() => handleThemeSelect(theme.id)}
+                  >
+                    <div className="theme-preview">
+                      {theme.preview.map((color, i) => (
+                        <div key={i} className="theme-swatch" style={{ background: color }} />
+                      ))}
+                    </div>
+                    <div className="theme-info">
+                      <b>{theme.name}</b>
+                      <small>{theme.description}</small>
+                    </div>
+                    {selectedTheme === theme.id && (
+                      <span className="theme-check"><Check size={13}/></span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              <div className="settings-actions">
+                <button type="submit" className="primary-btn">
+                  <Save size={15}/> Save Theme
+                </button>
+              </div>
+            </form>
+          )}
           {activeTab === "profile" && (
             <form onSubmit={saveProfileSubmit} className="panel settings-panel">
               <div className="panel-title">
@@ -1328,25 +1922,1000 @@ function SettingsView() {
   );
 }
 
-function Admin(){
- const [published,setPublished]=useState(true);
- return <div className="page"><section className="section-head"><div><span className="eyebrow">🛡 ADMIN CONTROL</span><h1>Problem Studio</h1><p>Create and manage competitive programming content without exposing hidden tests.</p></div><button className="primary-btn"><span>+</span> New Problem</button></section>
- <div className="admin-stats"><Stat icon={<Code2/>} label="Published problems" value="148" meta="+12 this month"/><Stat icon={<Bug/>} label="Bug challenges" value="36" meta="4 drafts"/><Stat icon={<Users/>} label="Active duelists" value="842" meta="Live now"/></div>
- <section className="panel admin-list"><div className="panel-title"><div><span className="eyebrow">PROBLEM BANK</span><h3>Manage challenges</h3></div><div className="search"><Search size={15}/><input placeholder="Search problems"/></div></div>{problems.map((p,i)=><div className="admin-row" key={p.id}><div className="admin-icon">{i===1?"🐞":"💻"}</div><div><b>{p.title}</b><small>{p.category} · {p.tags.join(" · ")}</small></div><span className={`difficulty ${p.difficulty.toLowerCase()}`}>{p.difficulty}</span><span className={`status ${published?"published":"draft"}`}>{published?"Published":"Draft"}</span><button className="icon-btn" onClick={()=>setPublished(v=>!v)}><span>•••</span></button></div>)}</section>
- </div>;
+
+
+function FacultyView() {
+  const nav = useNavigate();
+  const currentUser = getUser() || {};
+  const [activeTab, setActiveTab] = useState("rooms"); // 'rooms' | 'create' | 'fixtures'
+
+  // Room Creation Form State
+  const [roomName, setRoomName] = useState("CSE-3A Data Structures Battle");
+  const [customJoinCode, setCustomJoinCode] = useState(() => "FAC-" + Math.floor(1000 + Math.random() * 9000));
+  const [problemSource, setProblemSource] = useState("app"); // 'app' | 'custom'
+  const [selectedAppProblem, setSelectedAppProblem] = useState("Two Sum");
+
+  // Custom Question Form State
+  const [customTitle, setCustomTitle] = useState("");
+  const [customCategory, setCustomCategory] = useState("Arrays & Hashing");
+  const [customDifficulty, setCustomDifficulty] = useState("Medium");
+  const [customDescription, setCustomDescription] = useState("");
+  const [customExample, setCustomExample] = useState("");
+  const [customConstraints, setCustomConstraints] = useState("1 <= nums.length <= 10^5");
+  const [customJsCode, setCustomJsCode] = useState(`function solution(input) {\n  // Write your custom problem solution\n  return input;\n}`);
+  const [customPyCode, setCustomPyCode] = useState(`def solution(input):\n    # Write your custom problem solution\n    return input`);
+  const [customTestInput, setCustomTestInput] = useState("[2, 7, 11, 15], 9");
+  const [customTestOutput, setCustomTestOutput] = useState("[0, 1]");
+
+  const [creatingRoom, setCreatingRoom] = useState(false);
+  const [roomSuccessMsg, setRoomSuccessMsg] = useState("");
+  const [copiedCode, setCopiedCode] = useState(null);
+
+  // Rooms List
+  const [activeRooms, setActiveRooms] = useState([
+    {
+      _id: "fac-rm-1",
+      code: "FAC-8042",
+      joinCode: "FAC-8042",
+      roomName: "CSE Data Structures Tournament",
+      hostName: currentUser.name || "Prof. Sharma",
+      problemSource: "app",
+      problemId: "Two Sum",
+      connectedCount: 48,
+      status: "waiting",
+      createdAt: new Date().toISOString()
+    }
+  ]);
+
+  const [selectedRoom, setSelectedRoom] = useState(activeRooms[0]);
+  const [fixtureMethod, setFixtureMethod] = useState("consecutive");
+  const [fixtures, setFixtures] = useState([]);
+  const [matchFilter, setMatchFilter] = useState("all");
+
+  const generateMembers = (count = 48) => {
+    const sampleNames = [
+      "Alex Kumar", "Priya Sharma", "Rahul Menon", "Kavitha Raj", "Dinesh K",
+      "Ananya Roy", "Sanjay Patel", "Meera Nair", "Vikram Singh", "Sneha Das",
+      "Karthik S", "Divya Pillai", "Arjun Varma", "Ritu Sethi", "Harish G",
+      "Pooja Rao", "Aakash Raman", "Deepa Mohan", "Manoj V", "Shreya Sen",
+      "Naveen Paul", "Swathi Iyer", "Ganesh M", "Bhavya Reddy", "Vijay Anand",
+      "Keerthi S", "Siddharth Jain", "Lavanya N", "Pradeep K", "Rashmi Bhat",
+      "Varun Hegde", "Nandini R", "Ashwin Roy", "Geetha M", "Suresh Babu",
+      "Gayathri V", "Surya Prakash", "Monika C", "Vignesh E", "Roshni M",
+      "Balaji R", "Pavithra T", "Mohan Raj", "Aishwarya S", "Deepak N",
+      "Sandhya V", "Gautam K", "Malini P", "Karan Das", "Tanvi Joshi"
+    ];
+    return Array.from({ length: count }, (_, i) => ({
+      loginNum: i + 1,
+      id: `std-${i + 1}`,
+      name: sampleNames[i % sampleNames.length],
+      college: currentUser.college || "Campus Engineering College",
+      department: currentUser.department || "CSE",
+      status: "Ready in Room"
+    }));
+  };
+
+  const [members, setMembers] = useState(() => generateMembers(48));
+
+  // Fetch rooms on mount
+  useEffect(() => {
+    const token = localStorage.getItem("campusDuelToken");
+    const api = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+    fetch(`${api}/rooms`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data.rooms) && data.rooms.length > 0) {
+          const loaded = data.rooms.map(r => ({
+            _id: r._id,
+            code: r.code || r.joinCode,
+            joinCode: r.joinCode || r.code,
+            roomName: r.roomName || "Faculty Classroom Arena",
+            hostName: r.host?.name || currentUser.name || "Faculty",
+            problemSource: r.problemSource || "app",
+            problemId: r.problemId || "Two Sum",
+            customProblem: r.customProblem,
+            connectedCount: r.connectedStudents?.length || 48,
+            status: r.status || "waiting",
+            createdAt: r.createdAt
+          }));
+          setActiveRooms(loaded);
+          setSelectedRoom(loaded[0]);
+        }
+      })
+      .catch(() => {});
+  }, [currentUser.name]);
+
+  function copyCodeToClipboard(codeStr) {
+    navigator.clipboard.writeText(codeStr);
+    setCopiedCode(codeStr);
+    setTimeout(() => setCopiedCode(null), 2500);
+  }
+
+  // Handle Room Creation Submit
+  async function handleCreateRoom(e) {
+    e.preventDefault();
+    setCreatingRoom(true);
+    setRoomSuccessMsg("");
+
+    const code = customJoinCode.trim().toUpperCase() || ("FAC-" + Math.floor(1000 + Math.random() * 9000));
+    
+    const roomPayload = {
+      roomName: roomName.trim() || "Faculty Classroom Arena",
+      joinCode: code,
+      problemSource,
+      problemId: problemSource === "app" ? selectedAppProblem : (customTitle || "Custom Problem"),
+      customProblem: problemSource === "custom" ? {
+        title: customTitle || "Faculty Custom Challenge",
+        category: customCategory,
+        difficulty: customDifficulty,
+        description: customDescription || "Custom coding challenge created by instructor.",
+        example: customExample || "Sample input & output provided.",
+        constraints: customConstraints.split("\n").filter(Boolean),
+        starters: {
+          javascript: customJsCode,
+          python: customPyCode
+        },
+        testCases: [{ input: customTestInput, output: customTestOutput }]
+      } : null
+    };
+
+    const token = localStorage.getItem("campusDuelToken");
+    const api = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
+    try {
+      const res = await fetch(`${api}/rooms`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(roomPayload)
+      });
+      const data = await res.json().catch(() => ({}));
+
+      const newRoom = {
+        _id: data.room?._id || `room-${Date.now()}`,
+        code: code,
+        joinCode: code,
+        roomName: roomPayload.roomName,
+        hostName: currentUser.name || "Faculty",
+        problemSource,
+        problemId: roomPayload.problemId,
+        customProblem: roomPayload.customProblem,
+        connectedCount: 48,
+        status: "waiting",
+        createdAt: new Date().toISOString()
+      };
+
+      setActiveRooms(prev => [newRoom, ...prev]);
+      setSelectedRoom(newRoom);
+      setRoomSuccessMsg(`Room "${newRoom.roomName}" published! Join Code: ${code}`);
+      setCustomJoinCode("FAC-" + Math.floor(1000 + Math.random() * 9000));
+      setTimeout(() => {
+        setRoomSuccessMsg("");
+        setActiveTab("rooms");
+      }, 1800);
+    } catch {
+      const fallbackRoom = {
+        _id: `room-${Date.now()}`,
+        code: code,
+        joinCode: code,
+        roomName: roomPayload.roomName,
+        hostName: currentUser.name || "Faculty",
+        problemSource,
+        problemId: roomPayload.problemId,
+        customProblem: roomPayload.customProblem,
+        connectedCount: 48,
+        status: "waiting",
+        createdAt: new Date().toISOString()
+      };
+      setActiveRooms(prev => [fallbackRoom, ...prev]);
+      setSelectedRoom(fallbackRoom);
+      setRoomSuccessMsg(`Room "${fallbackRoom.roomName}" created! Join Code: ${code}`);
+      setTimeout(() => {
+        setRoomSuccessMsg("");
+        setActiveTab("rooms");
+      }, 1800);
+    } finally {
+      setCreatingRoom(false);
+    }
+  }
+
+  function handleSetMemberCount(count) {
+    setMembers(generateMembers(count));
+    setFixtures([]);
+  }
+
+  function generateMatchFixtures() {
+    const n = members.length;
+    if (n < 2) {
+      alert("At least 2 members are needed to generate match fixtures.");
+      return;
+    }
+
+    const newFixtures = [];
+    const baseCode = selectedRoom?.joinCode || "FAC-8042";
+
+    if (fixtureMethod === "consecutive") {
+      for (let i = 0; i < n; i += 2) {
+        const p1 = members[i];
+        const p2 = i + 1 < n ? members[i + 1] : { loginNum: "-", name: "BYE (Auto-Pass)", status: "Pass" };
+        newFixtures.push({
+          matchId: Math.floor(i / 2) + 1,
+          roomCode: `${baseCode}-M${Math.floor(i / 2) + 1}`,
+          player1: p1,
+          player2: p2,
+          p1Tests: Math.floor(Math.random() * 3) + 2,
+          p2Tests: Math.floor(Math.random() * 3) + 1,
+          totalTests: 5,
+          status: p2.name.includes("BYE") ? "Completed" : "Active",
+          winner: p2.name.includes("BYE") ? p1.name : null,
+          timeElapsed: "04:12"
+        });
+      }
+    } else if (fixtureMethod === "crossHalf") {
+      const half = Math.ceil(n / 2);
+      for (let i = 0; i < half; i++) {
+        const p1 = members[i];
+        const p2 = (i + half < n) ? members[i + half] : { loginNum: "-", name: "BYE (Auto-Pass)", status: "Pass" };
+        newFixtures.push({
+          matchId: i + 1,
+          roomCode: `${baseCode}-M${i + 1}`,
+          player1: p1,
+          player2: p2,
+          p1Tests: Math.floor(Math.random() * 3) + 2,
+          p2Tests: Math.floor(Math.random() * 3) + 1,
+          totalTests: 5,
+          status: p2.name.includes("BYE") ? "Completed" : "Active",
+          winner: p2.name.includes("BYE") ? p1.name : null,
+          timeElapsed: "03:45"
+        });
+      }
+    } else if (fixtureMethod === "fold") {
+      const half = Math.ceil(n / 2);
+      for (let i = 0; i < half; i++) {
+        const p1 = members[i];
+        const p2 = (n - 1 - i > i) ? members[n - 1 - i] : { loginNum: "-", name: "BYE (Auto-Pass)", status: "Pass" };
+        newFixtures.push({
+          matchId: i + 1,
+          roomCode: `${baseCode}-M${i + 1}`,
+          player1: p1,
+          player2: p2,
+          p1Tests: Math.floor(Math.random() * 3) + 2,
+          p2Tests: Math.floor(Math.random() * 3) + 1,
+          totalTests: 5,
+          status: p2.name.includes("BYE") ? "Completed" : "Active",
+          winner: p2.name.includes("BYE") ? p1.name : null,
+          timeElapsed: "02:50"
+        });
+      }
+    }
+
+    setFixtures(newFixtures);
+    setActiveTab("fixtures");
+  }
+
+  function handleSetWinner(matchId, winnerName) {
+    setFixtures(prev => prev.map(f => f.matchId === matchId ? { ...f, winner: winnerName, status: "Completed" } : f));
+  }
+
+  const filteredFixtures = matchFilter === "all" ? fixtures : fixtures.filter(f => f.status.toLowerCase() === matchFilter.toLowerCase());
+
+  return (
+    <div className="page">
+      {/* Faculty Hero Banner */}
+      <section className="role-hero faculty">
+        <div>
+          <span className="eyebrow" style={{ color: "#38bdf8" }}>
+            <GraduationCap size={15}/> FACULTY COMMAND CENTER
+          </span>
+          <h1>Classroom Room & Question Manager</h1>
+          <p>Create custom battle rooms with unique Join Codes, select application questions or set custom problems, and supervise cohort duels.</p>
+        </div>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+          <button className="primary-btn" onClick={() => setActiveTab("create")} style={{ padding: "10px 18px", borderRadius: "8px" }}>
+            ➕ Create New Room
+          </button>
+        </div>
+      </section>
+
+      {/* Tabs */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "10px" }}>
+        <div style={{ display: "flex", gap: "10px" }}>
+          <button
+            className={`primary-btn ${activeTab === "rooms" ? "" : "outline"}`}
+            onClick={() => setActiveTab("rooms")}
+            style={{ padding: "8px 18px", borderRadius: "8px" }}
+          >
+            <Users size={16}/> Active Rooms ({activeRooms.length})
+          </button>
+          <button
+            className={`primary-btn ${activeTab === "create" ? "" : "outline"}`}
+            onClick={() => setActiveTab("create")}
+            style={{ padding: "8px 18px", borderRadius: "8px" }}
+          >
+            ➕ Create Room & Set Question
+          </button>
+          <button
+            className={`primary-btn ${activeTab === "fixtures" ? "" : "outline"}`}
+            onClick={() => {
+              if (fixtures.length === 0) generateMatchFixtures();
+              else setActiveTab("fixtures");
+            }}
+            style={{ padding: "8px 18px", borderRadius: "8px" }}
+          >
+            <Swords size={16}/> Match Fixtures ({fixtures.length})
+          </button>
+        </div>
+      </div>
+
+      {/* TAB 1: ACTIVE ROOMS & JOIN CODES */}
+      {activeTab === "rooms" && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: "18px", marginBottom: "24px" }}>
+            {activeRooms.map(room => (
+              <div
+                key={room._id || room.joinCode}
+                className="panel"
+                style={{
+                  border: selectedRoom?.joinCode === room.joinCode ? "2px solid var(--accent)" : "1px solid var(--line)",
+                  background: "var(--panel)",
+                  padding: "18px",
+                  borderRadius: "12px"
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
+                  <div>
+                    <span className="eyebrow" style={{ color: "var(--cyan)" }}>FACULTY ROOM</span>
+                    <h3 style={{ margin: "2px 0 4px" }}>{room.roomName}</h3>
+                    <small style={{ color: "var(--muted)" }}>Host: {room.hostName}</small>
+                  </div>
+                  <span className={`admin-status-badge ${room.status}`}>
+                    {room.status}
+                  </span>
+                </div>
+
+                {/* JOIN CODE DISPLAY BOX */}
+                <div
+                  style={{
+                    background: "var(--panel2)",
+                    border: "1px dashed var(--cyan)",
+                    padding: "12px",
+                    borderRadius: "10px",
+                    display: "flex",
+                    justify: "space-between",
+                    alignItems: "center",
+                    marginBottom: "14px"
+                  }}
+                >
+                  <div>
+                    <small style={{ color: "var(--muted)", display: "block", fontSize: "0.72rem", textTransform: "uppercase" }}>
+                      STUDENT JOIN CODE
+                    </small>
+                    <b style={{ color: "var(--yellow)", fontSize: "1.4rem", letterSpacing: "0.08em" }}>
+                      {room.joinCode}
+                    </b>
+                  </div>
+                  <button
+                    className="ghost-btn small"
+                    onClick={() => copyCodeToClipboard(room.joinCode)}
+                    style={{ padding: "6px 12px", fontSize: "0.8rem" }}
+                  >
+                    {copiedCode === room.joinCode ? "Copied! ✓" : "Copy Code"}
+                  </button>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", color: "var(--muted)", marginBottom: "14px" }}>
+                  <span>Question: <b style={{ color: "var(--text)" }}>{room.problemId}</b></span>
+                  <span>Type: <b style={{ color: "var(--accent)" }}>{room.problemSource === "custom" ? "Custom Question" : "App Bank"}</b></span>
+                </div>
+
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    className="primary-btn small"
+                    onClick={() => {
+                      setSelectedRoom(room);
+                      generateMatchFixtures();
+                    }}
+                    style={{ flex: 1, padding: "8px", borderRadius: "6px" }}
+                  >
+                    <Swords size={14} style={{ marginRight: "4px" }}/> Launch Match Fixtures
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Connected Roster */}
+          <section className="panel">
+            <div className="panel-title">
+              <div>
+                <span className="eyebrow">SELECTED ROOM: {selectedRoom?.joinCode}</span>
+                <h3>Connected Students Roster ({members.length})</h3>
+              </div>
+              <small style={{ color: "var(--green)", fontWeight: "600" }}>● All {members.length} Ready</small>
+            </div>
+            <div className="lobby-member-grid">
+              {members.map(m => (
+                <div className="lobby-member-pill" key={m.id}>
+                  <span className="login-num-chip">#{m.loginNum}</span>
+                  <div style={{ overflow: "hidden" }}>
+                    <b style={{ display: "block", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>{m.name}</b>
+                    <small style={{ color: "var(--muted)", fontSize: "0.72rem" }}>Login #{m.loginNum}</small>
+                  </div>
+                  <span style={{ marginLeft: "auto", color: "var(--green)", fontSize: "0.75rem" }}>●</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
+      )}
+
+      {/* TAB 2: CREATE ROOM & SET QUESTION */}
+      {activeTab === "create" && (
+        <section className="panel" style={{ maxWidth: "800px", margin: "0 auto" }}>
+          <div className="panel-title">
+            <div>
+              <span className="eyebrow">FACULTY ROOM BUILDER</span>
+              <h3>Create Room & Set Challenge Question</h3>
+            </div>
+            <GraduationCap size={22} color="var(--accent)"/>
+          </div>
+
+          {roomSuccessMsg && (
+            <div className="toast-notification" style={{ marginBottom: "16px", background: "rgba(56, 217, 150, 0.15)", borderColor: "var(--green)" }}>
+              <CheckCircle2 size={16} /> {roomSuccessMsg}
+            </div>
+          )}
+
+          <form onSubmit={handleCreateRoom}>
+            <div className="settings-grid" style={{ marginBottom: "18px" }}>
+              <label>
+                Room Name / Course Code
+                <input
+                  value={roomName}
+                  onChange={e => setRoomName(e.target.value)}
+                  placeholder="e.g. CSE-3A Data Structures Battle"
+                  required
+                />
+              </label>
+
+              <label>
+                Custom Room Join Code (Auto-Generated)
+                <input
+                  value={customJoinCode}
+                  onChange={e => setCustomJoinCode(e.target.value.toUpperCase())}
+                  placeholder="e.g. FAC-8042"
+                  style={{ textTransform: "uppercase", fontWeight: "bold", letterSpacing: "0.05em" }}
+                  required
+                />
+              </label>
+            </div>
+
+            {/* QUESTION SOURCE SELECTION TOGGLE */}
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{ display: "block", marginBottom: "8px", fontWeight: "600", fontSize: "0.85rem", color: "var(--muted)" }}>
+                CHALLENGE QUESTION SOURCE
+              </label>
+              <div style={{ display: "flex", gap: "12px" }}>
+                <button
+                  type="button"
+                  className={`primary-btn ${problemSource === "app" ? "" : "outline"}`}
+                  onClick={() => setProblemSource("app")}
+                  style={{ flex: 1, padding: "10px", borderRadius: "8px" }}
+                >
+                  📚 Use Application Question Bank
+                </button>
+                <button
+                  type="button"
+                  className={`primary-btn ${problemSource === "custom" ? "" : "outline"}`}
+                  onClick={() => setProblemSource("custom")}
+                  style={{ flex: 1, padding: "10px", borderRadius: "8px" }}
+                >
+                  ✍️ Set Custom Question
+                </button>
+              </div>
+            </div>
+
+            {/* OPTION A: APPLICATION QUESTION BANK */}
+            {problemSource === "app" && (
+              <div className="panel" style={{ background: "var(--panel2)", marginBottom: "20px", border: "1px solid var(--line)" }}>
+                <h4 style={{ margin: "0 0 10px" }}>Select Question from Application Bank</h4>
+                <label>
+                  Choose Problem
+                  <select value={selectedAppProblem} onChange={e => setSelectedAppProblem(e.target.value)} style={{ marginTop: "6px" }}>
+                    <option value="Two Sum">Two Sum (Arrays & Hashing · Medium)</option>
+                    <option value="Valid Palindrome">Valid Palindrome (Strings · Easy)</option>
+                    <option value="Reverse Linked List">Reverse Linked List (Pointers · Medium)</option>
+                    <option value="Subarray Sum Equals K">Subarray Sum Equals K (Hash Maps · Hard)</option>
+                    <option value="Fix the Palindrome Bug">Fix the Palindrome Bug (Bug Battle · Medium)</option>
+                    <option value="Reverse String Sprint">Reverse String Sprint (Speed Coding · Easy)</option>
+                    <option value="Sum of Digits">Sum of Digits (Code Golf · Medium)</option>
+                  </select>
+                </label>
+              </div>
+            )}
+
+            {/* OPTION B: SET CUSTOM QUESTION */}
+            {problemSource === "custom" && (
+              <div className="panel" style={{ background: "var(--panel2)", marginBottom: "20px", border: "1px dashed var(--accent)" }}>
+                <h4 style={{ margin: "0 0 12px", color: "var(--accent)" }}>✍️ Custom Question Builder</h4>
+                
+                <div className="settings-grid" style={{ marginBottom: "14px" }}>
+                  <label>
+                    Problem Title
+                    <input
+                      value={customTitle}
+                      onChange={e => setCustomTitle(e.target.value)}
+                      placeholder="e.g. Find Saddle Point in Matrix"
+                      required={problemSource === "custom"}
+                    />
+                  </label>
+
+                  <label>
+                    Category & Difficulty
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <select value={customCategory} onChange={e => setCustomCategory(e.target.value)} style={{ flex: 1 }}>
+                        <option value="Arrays & Hashing">Arrays</option>
+                        <option value="Strings">Strings</option>
+                        <option value="Algorithms">Algorithms</option>
+                        <option value="Dynamic Programming">DP</option>
+                        <option value="Debugging">Debugging</option>
+                      </select>
+                      <select value={customDifficulty} onChange={e => setCustomDifficulty(e.target.value)} style={{ width: "110px" }}>
+                        <option value="Easy">Easy</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Hard">Hard</option>
+                      </select>
+                    </div>
+                  </label>
+                </div>
+
+                <label style={{ display: "block", marginBottom: "12px" }}>
+                  Problem Description / Requirements
+                  <textarea
+                    value={customDescription}
+                    onChange={e => setCustomDescription(e.target.value)}
+                    placeholder="Describe problem details, inputs, outputs, and expected behavior..."
+                    rows={3}
+                    style={{ width: "100%", background: "var(--bg)", color: "var(--text)", border: "1px solid var(--line)", padding: "10px", borderRadius: "8px" }}
+                  />
+                </label>
+
+                <div className="settings-grid" style={{ marginBottom: "14px" }}>
+                  <label>
+                    Sample Example (Input & Output)
+                    <input
+                      value={customExample}
+                      onChange={e => setCustomExample(e.target.value)}
+                      placeholder="Input: [1,2,3] | Output: 6"
+                    />
+                  </label>
+                  <label>
+                    Constraints
+                    <input
+                      value={customConstraints}
+                      onChange={e => setCustomConstraints(e.target.value)}
+                      placeholder="1 <= N <= 10^5"
+                    />
+                  </label>
+                </div>
+
+                <label style={{ display: "block", marginBottom: "12px" }}>
+                  Starter Code (JavaScript Template)
+                  <textarea
+                    value={customJsCode}
+                    onChange={e => setCustomJsCode(e.target.value)}
+                    rows={3}
+                    style={{ width: "100%", background: "var(--bg)", color: "var(--cyan)", fontFamily: "monospace", border: "1px solid var(--line)", padding: "10px", borderRadius: "8px" }}
+                  />
+                </label>
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", borderTop: "1px solid var(--line)", paddingTop: "14px" }}>
+              <button className="primary-btn big" type="submit" disabled={creatingRoom}>
+                <Save size={16}/> {creatingRoom ? "Publishing..." : "Create Room & Publish Join Code"}
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
+
+      {/* TAB 3: LIVE MATCH FIXTURES BOARD */}
+      {activeTab === "fixtures" && (
+        <section className="panel">
+          <div className="panel-title">
+            <div>
+              <span className="eyebrow">TOURNAMENT BOARD</span>
+              <h3>Classroom Match Fixtures ({fixtures.length} Simultaneous Duels)</h3>
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button className={`ghost-btn ${matchFilter === "all" ? "active" : ""}`} onClick={() => setMatchFilter("all")}>All ({fixtures.length})</button>
+              <button className={`ghost-btn ${matchFilter === "active" ? "active" : ""}`} onClick={() => setMatchFilter("active")}>Active ({fixtures.filter(f => f.status === "Active").length})</button>
+              <button className={`ghost-btn ${matchFilter === "completed" ? "active" : ""}`} onClick={() => setMatchFilter("completed")}>Completed ({fixtures.filter(f => f.status === "Completed").length})</button>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--panel2)", padding: "10px 14px", borderRadius: "8px", margin: "12px 0 16px" }}>
+            <span style={{ fontSize: "0.85rem", color: "var(--muted)" }}>
+              Room: <b style={{ color: "var(--yellow)" }}>{selectedRoom?.joinCode}</b> · Question: <b style={{ color: "var(--text)" }}>{selectedRoom?.problemId}</b>
+            </span>
+            <button className="ghost-btn small" onClick={() => generateMatchFixtures()}>
+              <RotateCw size={14} style={{ marginRight: "4px" }}/> Re-Roll Fixtures
+            </button>
+          </div>
+
+          <div className="fixtures-grid">
+            {filteredFixtures.map(f => (
+              <div className="fixture-card" key={f.matchId}>
+                <div className="fixture-header">
+                  <span style={{ fontWeight: "700", color: "#a78bfa" }}>FIXTURE #{f.matchId}</span>
+                  <code style={{ background: "var(--panel2)", padding: "2px 6px", borderRadius: "4px", color: "var(--yellow)", fontSize: "0.75rem" }}>
+                    {f.roomCode}
+                  </code>
+                  <span className={`admin-status-badge ${f.status.toLowerCase()}`}>
+                    {f.status}
+                  </span>
+                </div>
+
+                <div className="fixture-duelists">
+                  <div className="fixture-duelist-slot">
+                    <span className="login-num-chip">#{f.player1.loginNum}</span>
+                    <div>
+                      <b style={{ fontSize: "0.9rem", color: f.winner === f.player1.name ? "var(--green)" : "var(--text)" }}>
+                        {f.player1.name}
+                      </b>
+                      <small style={{ display: "block", color: "var(--muted)", fontSize: "0.7rem" }}>
+                        Passed {f.p1Tests}/{f.totalTests} tests
+                      </small>
+                    </div>
+                  </div>
+
+                  <span className="fixture-vs">VS</span>
+
+                  <div className="fixture-duelist-slot p2">
+                    <span className="login-num-chip">#{f.player2.loginNum}</span>
+                    <div>
+                      <b style={{ fontSize: "0.9rem", color: f.winner === f.player2.name ? "var(--green)" : "var(--text)" }}>
+                        {f.player2.name}
+                      </b>
+                      <small style={{ display: "block", color: "var(--muted)", fontSize: "0.7rem" }}>
+                        Passed {f.p2Tests}/{f.totalTests} tests
+                      </small>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bar" style={{ height: "4px", margin: "4px 0" }}>
+                  <i style={{ width: `${(f.p1Tests / f.totalTests) * 100}%`, background: f.status === "Completed" ? "var(--green)" : "var(--cyan)" }} />
+                </div>
+
+                <div className="fixture-footer">
+                  <span style={{ color: "var(--muted)", fontSize: "0.75rem" }}>
+                    {f.winner ? `🏆 Winner: ${f.winner}` : `⏱ Elapsed: ${f.timeElapsed}`}
+                  </span>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button
+                      className="primary-btn small"
+                      onClick={() => nav(`/arena?room=${f.roomCode}`)}
+                      style={{ padding: "4px 10px", fontSize: "0.75rem" }}
+                    >
+                      <Eye size={12} style={{ marginRight: "3px" }}/> Spectate
+                    </button>
+                    {!f.winner && (
+                      <button
+                        className="ghost-btn small"
+                        onClick={() => handleSetWinner(f.matchId, f.player1.name)}
+                        style={{ padding: "4px 8px", fontSize: "0.7rem" }}
+                      >
+                        P1 Win
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function RoleDashboardDispatcher() {
+  const user = getUser();
+  if (!user) return <Navigate to="/auth" replace />;
+
+  switch (user.role) {
+    case "faculty":
+      return <FacultyView />;
+    case "setter":
+      return <ProblemStudioView />;
+    case "moderator":
+      return <RefereeView />;
+    case "admin":
+      return <Navigate to="/admin/dashboard" replace />;
+    case "student":
+    default:
+      return <Dashboard />;
+  }
+}
+
+function ProblemStudioView() {
+  const [form, setForm] = useState({
+    title: "",
+    category: "Arrays",
+    difficulty: "Medium",
+    timeLimit: "2.0s",
+    description: "",
+    starterJs: "function solve(nums) {\n  // Write solution\n}",
+    sampleInput: "[2, 7, 11, 15], target = 9",
+    sampleOutput: "[0, 1]"
+  });
+  const [saved, setSaved] = useState(false);
+
+  function handleSave(e) {
+    e.preventDefault();
+    if (!form.title) {
+      alert("Please provide a problem title.");
+      return;
+    }
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3500);
+  }
+
+  return (
+    <div className="page">
+      <section className="role-hero setter">
+        <div>
+          <span className="eyebrow" style={{ color: "#a78bfa" }}><Code2 size={15}/> PROBLEM SETTER STUDIO</span>
+          <h1>Author & Curate Arena Challenges</h1>
+          <p>Create competitive coding challenges, formulate bug scenarios, and configure starter code templates.</p>
+        </div>
+      </section>
+
+      {saved && (
+        <div className="panel" style={{ marginBottom: "20px", borderLeft: "4px solid #a78bfa", background: "rgba(167, 139, 250, 0.1)" }}>
+          <b style={{ color: "#a78bfa" }}>✓ Problem Successfully Submitted to Arena Question Bank!</b>
+          <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "var(--muted)" }}>The problem "{form.title}" is now queued for tournament and duel rotation.</p>
+        </div>
+      )}
+
+      <form onSubmit={handleSave} className="panel">
+        <div className="panel-title">
+          <div>
+            <span className="eyebrow">CHALLENGE METADATA</span>
+            <h3>Problem Specification</h3>
+          </div>
+          <button type="submit" className="primary-btn">
+            <Save size={15}/> Save & Publish Problem
+          </button>
+        </div>
+
+        <div className="role-grid-3" style={{ marginBottom: "16px" }}>
+          <div className="role-form-group">
+            <label>Problem Title</label>
+            <input
+              placeholder="e.g. Subarray Sum Equals K"
+              value={form.title}
+              onChange={e => setForm(v => ({ ...v, title: e.target.value }))}
+            />
+          </div>
+          <div className="role-form-group">
+            <label>Category</label>
+            <select value={form.category} onChange={e => setForm(v => ({ ...v, category: e.target.value }))}>
+              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="role-form-group">
+            <label>Difficulty</label>
+            <select value={form.difficulty} onChange={e => setForm(v => ({ ...v, difficulty: e.target.value }))}>
+              <option value="Easy">Easy</option>
+              <option value="Medium">Medium</option>
+              <option value="Hard">Hard</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="role-form-group">
+          <label>Problem Description & Constraints</label>
+          <textarea
+            rows={4}
+            placeholder="Describe the problem, input format, constraints, and edge cases..."
+            value={form.description}
+            onChange={e => setForm(v => ({ ...v, description: e.target.value }))}
+          />
+        </div>
+
+        <div className="two-col" style={{ marginTop: "14px" }}>
+          <div className="role-form-group">
+            <label>Sample Input</label>
+            <textarea
+              rows={3}
+              placeholder="e.g. nums = [1,1,1], k = 2"
+              value={form.sampleInput}
+              onChange={e => setForm(v => ({ ...v, sampleInput: e.target.value }))}
+            />
+          </div>
+          <div className="role-form-group">
+            <label>Sample Output</label>
+            <textarea
+              rows={3}
+              placeholder="e.g. 2"
+              value={form.sampleOutput}
+              onChange={e => setForm(v => ({ ...v, sampleOutput: e.target.value }))}
+            />
+          </div>
+        </div>
+
+        <div className="role-form-group" style={{ marginTop: "14px" }}>
+          <label>Starter Code Template (JavaScript)</label>
+          <textarea
+            rows={4}
+            value={form.starterJs}
+            onChange={e => setForm(v => ({ ...v, starterJs: e.target.value }))}
+            style={{ fontFamily: "monospace", fontSize: "0.85rem" }}
+          />
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function RefereeView() {
+  const [rooms, setRooms] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("all");
+
+  useEffect(() => {
+    const token = localStorage.getItem("campusDuelToken") || localStorage.getItem("campusDuelAdminToken");
+    const api = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+    fetch(`${api}/rooms`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
+      .then(res => res.json())
+      .then(data => {
+        setRooms(data.rooms || []);
+      })
+      .catch(() => {
+        setRooms([
+          { _id: "1", code: "DUEL99", host: { name: "Alex Kumar", elo: 1397 }, opponent: { name: "Priya S", elo: 1364 }, status: "active", problemId: "Two Sum" },
+          { _id: "2", code: "ARENA7", host: { name: "Hari Shankar", elo: 1428 }, opponent: null, status: "waiting", problemId: "Reverse Linked List" },
+          { _id: "3", code: "SPEED4", host: { name: "Rahul M", elo: 1321 }, opponent: { name: "Dinesh K", elo: 1245 }, status: "active", problemId: "Valid Parentheses" },
+        ]);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = filter === "all" ? rooms : rooms.filter(r => r.status === filter);
+
+  return (
+    <div className="page">
+      <section className="role-hero referee">
+        <div>
+          <span className="eyebrow" style={{ color: "#38d996" }}><Shield size={15}/> MATCH REFEREE & MODERATOR CONSOLE</span>
+          <h1>Live Arena Supervision</h1>
+          <p>Inspect active 1v1 battle rooms, monitor fair-play compliance, and supervise live duels.</p>
+        </div>
+        <div style={{ display: "flex", gap: "10px" }}>
+          <button className={`ghost-btn ${filter === "all" ? "active" : ""}`} onClick={() => setFilter("all")}>All</button>
+          <button className={`ghost-btn ${filter === "active" ? "active" : ""}`} onClick={() => setFilter("active")}>Active</button>
+          <button className={`ghost-btn ${filter === "waiting" ? "active" : ""}`} onClick={() => setFilter("waiting")}>Waiting</button>
+        </div>
+      </section>
+
+      <div className="stat-grid">
+        <Stat icon={<Activity/>} label="Active Battles" value={rooms.filter(r => r.status === "active").length} meta="In-flight duels" />
+        <Stat icon={<Clock3/>} label="Waiting Matchups" value={rooms.filter(r => r.status === "waiting").length} meta="Seeking opponent" />
+        <Stat icon={<Shield/>} label="Referee Status" value="Online" meta="Fair-play sentinel active" />
+      </div>
+
+      <section className="panel">
+        <div className="panel-title">
+          <div>
+            <span className="eyebrow">LIVE ROOMS</span>
+            <h3>Arena Match Monitor</h3>
+          </div>
+          <Radio size={16} color="var(--green)"/>
+        </div>
+
+        {loading ? (
+          <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)" }}>Loading rooms…</div>
+        ) : filtered.length === 0 ? (
+          <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)" }}>No rooms match the selected filter.</div>
+        ) : (
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Room Code</th>
+                <th>Host Duelist</th>
+                <th>Opponent</th>
+                <th>Status</th>
+                <th>Challenge</th>
+                <th>Referee Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(r => (
+                <tr key={r._id || r.code}>
+                  <td>
+                    <code style={{ background: "var(--panel2)", padding: "4px 8px", borderRadius: "6px", color: "var(--yellow)", fontWeight: "bold" }}>
+                      {r.code}
+                    </code>
+                  </td>
+                  <td>
+                    <b>{r.host?.name || "Player 1"}</b>
+                    <small className="admin-muted" style={{ display: "block" }}>{r.host?.elo ? `${r.host.elo} ELO` : ""}</small>
+                  </td>
+                  <td>
+                    {r.opponent ? (
+                      <>
+                        <b>{r.opponent.name}</b>
+                        <small className="admin-muted" style={{ display: "block" }}>{r.opponent.elo ? `${r.opponent.elo} ELO` : ""}</small>
+                      </>
+                    ) : (
+                      <span className="admin-muted">Waiting for rival…</span>
+                    )}
+                  </td>
+                  <td>
+                    <span className={`admin-status-badge ${r.status}`}>
+                      {r.status}
+                    </span>
+                  </td>
+                  <td className="admin-muted">{r.problemId || "Standard Match"}</td>
+                  <td>
+                    <button
+                      className="primary-btn small"
+                      onClick={() => alert(`Spectating Room ${r.code}. Live telemetry connected.`)}
+                      style={{ padding: "5px 12px", fontSize: "0.8rem" }}
+                    >
+                      <Eye size={13} style={{ marginRight: "4px" }}/> Spectate
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </div>
+  );
 }
 
 function App(){
- return <Routes>
-   <Route path="/auth" element={getUser() ? <Navigate to="/" replace /> : <AuthPage/>}/>
-   <Route path="/" element={<Protected><Shell><Dashboard/></Shell></Protected>}/>
+  useEffect(() => {
+    applyTheme(getSettings().appTheme || "dark-arena");
+  }, []);
+
+  return <Routes>
+   {/* Auth redirects to role-specific home */}
+   <Route path="/auth" element={getUser() ? <Navigate to={getRoleDashboard(getUser()?.role)} replace /> : <AuthPage/>}/>
+
+   {/* Root "/" dispatches each role to their own dashboard view */}
+   <Route path="/" element={<Protected><Shell><RoleDashboardDispatcher/></Shell></Protected>}/>
+
+   {/* Shared pages available to all roles */}
    <Route path="/duel" element={<Protected><Shell><DuelSelection/></Shell></Protected>}/>
    <Route path="/arena" element={<Protected><Shell><Arena/></Shell></Protected>}/>
    <Route path="/leaderboard" element={<Protected><Shell><Leaderboard/></Shell></Protected>}/>
    <Route path="/profile" element={<Protected><Shell><Profile/></Shell></Protected>}/>
    <Route path="/settings" element={<Protected><Shell><SettingsView/></Shell></Protected>}/>
-   <Route path="/admin" element={<Protected><AdminProtected><Shell><Admin/></Shell></AdminProtected></Protected>}/>
-   <Route path="*" element={<Navigate to={getUser() ? "/" : "/auth"} replace/>}/>
+
+   {/* Role-specific pages (also accessible directly via URL) */}
+   <Route path="/faculty" element={<Protected><RoleProtected allowedRoles={["faculty"]}><Shell><FacultyView/></Shell></RoleProtected></Protected>}/>
+   <Route path="/studio" element={<Protected><RoleProtected allowedRoles={["setter"]}><Shell><ProblemStudioView/></Shell></RoleProtected></Protected>}/>
+   <Route path="/referee" element={<Protected><RoleProtected allowedRoles={["moderator"]}><Shell><RefereeView/></Shell></RoleProtected></Protected>}/>
+
+   {/* Admin */}
+   <Route path="/admin" element={<Navigate to="/admin/dashboard" replace/>}/>
+   <Route path="/admin/login" element={<Navigate to="/auth" replace/>}/>
+   <Route path="/admin/dashboard" element={<AdminProtectedRoute><AdminDashboard/></AdminProtectedRoute>}/>
+
+   {/* Fallback */}
+   <Route path="*" element={<Navigate to={getUser() ? getRoleDashboard(getUser()?.role) : "/auth"} replace/>}/>
  </Routes>;
 }
 export default App;

@@ -8,6 +8,7 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const roomRoutes = require('./routes/rooms');
 const leaderboardRoutes = require('./routes/leaderboard');
+const adminRoutes = require('./routes/admin');
 const registerDuelSocket = require('./sockets/duelSocket');
 const registerRoomSocket = require('./sockets/roomSocket');
 
@@ -24,6 +25,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/rooms', roomRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/admin', adminRoutes);
 
 io.on('connection', socket => {
   console.log('Socket connected:', socket.id);
